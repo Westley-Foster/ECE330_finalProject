@@ -1,12 +1,12 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file           : main.c  LAB6
-  * @brief          : Main program body
+  * @file           : main.c
+  * @brief          : Main program body Final Project SP2025
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2022 STMicroelectronics.
+  * Copyright (c) 2025 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "usb_host.h"
 #include "seg7.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -33,9 +32,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
-
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,30 +44,33 @@ I2C_HandleTypeDef hi2c1;
 
 I2S_HandleTypeDef hi2s3;
 
+RTC_HandleTypeDef hrtc;
+
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim7;
 
+UART_HandleTypeDef huart3;
+
 /* USER CODE BEGIN PV */
-int DelayValue = 50;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM7_Init(void);
-void MX_USB_HOST_Process(void);
+
+//Custom functions
+void display_time_from_RTC(void);
+void calendar_init_config(void);
 
 /* USER CODE BEGIN PFP */
-void Play_Note(int note,int size,int tempo,int space);
-extern void Seven_Segment_Digit (unsigned char digit, unsigned char hex_char, unsigned char dot);
-extern void Seven_Segment(unsigned int HexValue);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 char ramp = 0;
 char RED_BRT = 0;
 char GREEN_BRT = 0;
@@ -96,6 +95,7 @@ char *Save_Pointer;
 int Delay_msec = 0;
 int Delay_counter = 0;
 
+
 /* HELLO ECE-330L */
 char Message[] =
 		{SPACE,SPACE,SPACE,SPACE,SPACE,SPACE,SPACE,SPACE,SPACE,SPACE,
@@ -104,21 +104,6 @@ char Message[] =
 
 /* Declare array for Song */
 Music Song[100];
-
-static void clear_display(){
-
-	Seven_Segment_Digit(7, SPACE, 0);
-	Seven_Segment_Digit(6, SPACE, 0);
-	Seven_Segment_Digit(5, SPACE, 0);
-	Seven_Segment_Digit(4, SPACE, 0);
-	Seven_Segment_Digit(3, SPACE, 0);
-	Seven_Segment_Digit(2, SPACE, 0);
-	Seven_Segment_Digit(1, SPACE, 0);
-	Seven_Segment_Digit(0, SPACE, 0);
-
-}
-
-
 /* USER CODE END 0 */
 
 /**
@@ -149,17 +134,29 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  //MX_I2C1_Init();
-  //MX_I2S3_Init();
-  //MX_SPI1_Init();
-  //MX_USB_HOST_Init();
   MX_TIM7_Init();
+  //MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+
+  /********************************************************************
+   * PWR->CR |= ???;  //Enable Real Time Clock (RTC) Register Access  *
+   * RCC->BDCR |= ???;  //Set clock source for RTC                    *
+   * RCC->BDCR |= ???; //Enable RTC									  *
+   ********************************************************************/
+  PWR->CR |= (1 << 8); //Enable Real Time Clock (RTC) Register Access by setting PWR->CR bit 8 to a 1
+
+  //  RCC->BDCR &= ~(3 << 8);  // clear RTCSEL bits
+  RCC->BDCR |= (2 << 8); //Set clock source for RTC by setting bits 9 and 8 to 10 (1 and 0 in binary, respectively, because 2 bits need changed, and '10' in binary is 2)
+  RCC->BDCR |= (1 << 15); //Enables the RTC
+
+  //Unlocks the write protection on needed RTC Registers
+  RTC->WPR = 0xCA;
+  RTC->WPR = 0x53;
 
   /*** Configure GPIOs ***/
   GPIOD->MODER = 0x55555555; // set all Port D pins to outputs
   GPIOA->MODER |= 0x000000FF; // Port A mode register - make A0 to A3 analog pins
-  GPIOE->MODER |= 0x55555555; // Port E mode register - make E8 to E15 outputs
+  GPIOE->MODER |= 0x55555555; // Port E mode register - make E0 to E15 outputs
   GPIOC->MODER |= 0x0; // Port C mode register - all inputs
   GPIOE->ODR = 0xFFFF; // Set all Port E pins high
 
@@ -180,16 +177,7 @@ int main(void)
   TIM7->DIER |= 1; // Enable timer 7 interrupt
   TIM7->CR1 |= 1; // Enable timer counting
 
-    int analog_value, digit, volts_tenths, volts_hundredths, raw_1000, raw_100, raw_10, raw_1;
-
-
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-
   /* Jeopardy Song */
-  /*
   Song[0].note = A4;
   Song[0].size = quarter;
   Song[0].tempo = 1400;
@@ -670,297 +658,74 @@ int main(void)
   Song[99].space = 10;
   Song[99].end = 1;
 
-*/
-
-  	//First Line
-    Song[0].note = C4;
-    Song[0].size = quarter;
-    Song[0].tempo = 1400;
-    Song[0].space = 10;
-    Song[0].end = 0;
-
-    Song[1].note = C4;
-    Song[1].size = quarter;
-    Song[1].tempo = 1400;
-    Song[1].space = 10;
-    Song[1].end = 0;
-
-    Song[2].note = G4;
-    Song[2].size = quarter;
-    Song[2].tempo = 1400;
-    Song[2].space = 10;
-    Song[2].end = 0;
-
-    Song[3].note = G4;
-    Song[3].size = quarter;
-    Song[3].tempo = 1400;
-    Song[3].space = 10;
-    Song[3].end = 0;
-
-    Song[4].note = A4;
-    Song[4].size = quarter;
-    Song[4].tempo = 1400;
-    Song[4].space = 10;
-    Song[4].end = 0;
-
-    Song[5].note = A4;
-    Song[5].size = quarter;
-    Song[5].tempo = 1400;
-    Song[5].space = 10;
-    Song[5].end = 0;
-
-    Song[6].note = G4;
-    Song[6].size = quarter;
-    Song[6].tempo = 1400;
-    Song[6].space = 10;
-    Song[6].end = 0;
-
-    Song[7].note = rest;
-    Song[7].size = quarter;
-    Song[7].tempo = 1400;
-    Song[7].space = 10;
-    Song[7].end = 0;
-
-    Song[8].note = F4;
-    Song[8].size = quarter;
-    Song[8].tempo = 1400;
-    Song[8].space = 10;
-    Song[8].end = 0;
-
-    Song[9].note = F4;
-    Song[9].size = quarter;
-    Song[9].tempo = 1400;
-    Song[9].space = 10;
-    Song[9].end = 0;
-
-    Song[10].note = E4;
-    Song[10].size = quarter;
-    Song[10].tempo = 1400;
-    Song[10].space = 10;
-    Song[10].end = 0;
-
-    Song[11].note = E4;
-    Song[11].size = quarter;
-    Song[11].tempo = 1400;
-    Song[11].space = 10;
-    Song[11].end = 0;
-
-    Song[12].note = D4;
-    Song[12].size = quarter;
-    Song[12].tempo = 1400;
-    Song[12].space = 10;
-    Song[12].end = 0;
-
-    Song[13].note = D4;
-	Song[13].size = quarter;
-	Song[13].tempo = 1400;
-	Song[13].space = 10;
-	Song[13].end = 0;
-
-	Song[14].note = C4;
-	Song[14].size = quarter;
-	Song[14].tempo = 1400;
-	Song[14].space = 10;
-	Song[14].end = 0;
-	//END Of First Line
-
-	//Second Line
-	Song[15].note = F4;
-	Song[15].size = quarter;
-	Song[15].tempo = 1400;
-	Song[15].space = 10;
-	Song[15].end = 0;
-
-	Song[16].note = F4;
-	Song[16].size = quarter;
-	Song[16].tempo = 1400;
-	Song[16].space = 10;
-	Song[16].end = 0;
-
-	Song[17].note = E4;
-	Song[17].size = quarter;
-	Song[17].tempo = 1400;
-	Song[17].space = 10;
-	Song[17].end = 0;
-
-	Song[18].note = E4;
-	Song[18].size = quarter;
-	Song[18].tempo = 1400;
-	Song[18].space = 10;
-	Song[18].end = 0;
-
-	Song[19].note = D4;
-	Song[19].size = quarter;
-	Song[19].tempo = 1400;
-	Song[19].space = 10;
-	Song[19].end = 0;
-
-	Song[20].note = D4;
-	Song[20].size = quarter;
-	Song[20].tempo = 1400;
-	Song[20].space = 10;
-	Song[20].end = 0;
-
-	Song[21].note = C4;
-	Song[21].size = half;
-	Song[21].tempo = 1400;
-	Song[21].space = 10;
-	Song[21].end = 0;
-	//End Of Second Line
-
-	//Third Line
-	Song[22].note = G4;
-	Song[22].size = quarter;
-	Song[22].tempo = 1400;
-	Song[22].space = 10;
-	Song[22].end = 0;
-
-	Song[23].note = G4;
-	Song[23].size = quarter;
-	Song[23].tempo = 1400;
-	Song[23].space = 10;
-	Song[23].end = 0;
-
-	Song[24].note = F4;
-	Song[24].size = quarter;
-	Song[24].tempo = 1400;
-	Song[24].space = 10;
-	Song[24].end = 0;
-
-	Song[25].note = F4;
-	Song[25].size = quarter;
-	Song[25].tempo = 1400;
-	Song[25].space = 10;
-	Song[25].end = 0;
-
-	Song[26].note = E4;
-	Song[26].size = quarter;
-	Song[26].tempo = 1400;
-	Song[26].space = 10;
-	Song[26].end = 0;
-
-	Song[27].note = E4;
-	Song[27].size = quarter;
-	Song[27].tempo = 1400;
-	Song[27].space = 10;
-	Song[27].end = 0;
-
-	Song[28].note = D4;
-	Song[28].size = quarter;
-	Song[28].tempo = 1400;
-	Song[28].space = 100;
-	Song[28].end = 0;
-
 
   Save_Note = Song[0].note;  // Needed for vibrato effect
   INDEX = 0;
+  Music_ON = 0;
+  /* USER CODE END 2 */
+
+  /* Calendar initialization and configuration */
+  void calendar_init_config(void) { //used to be display_time_from_RTC
+	  //Enters initialization mode by setting INIT bit in the RTC_ISR register to 1
+	  RTC->ISR |= (1 << 7);
+
+	  // Poll INITF bit of the RTC_ISR register (i.e. enters initialization mode)
+	  while(!(RTC->ISR & (1 << 6))) {
+		  //Loops until INITF becomes a 1
+	  }
+
+	  //Generates a 1Hz clock for the calendar counter
+	  RTC->PRER = 0x102; //Set lower portion to 258
+	  RTC->PRER |= 0x007F0000; //Set upper portion to 127
+
+	  /* Loads initial time and date values */
+	  //Sets the initial time to 17:35:00 (5:35:00 PM)
+	  RTC->TR =
+		  (0x1 << 20) | //Hours tens
+		  (0x7 << 16) | //Hours ones
+		  (0x3 << 12) | //Minutes tens
+		  (0x5 << 8)  | //Minutes ones
+		  (0x0 << 4)  | //Seconds tens
+		  (0x0);      //Seconds ones
+
+	  /* Sets the initial date November 21, 2025 */
+	  RTC->DR =
+		(0x2 << 20) | //Years tens
+		(0x5 << 16) | //Years ones
+		(0x1 << 12) | //Months tens
+		(0x1 << 8)  | //Months ones
+		(0x2 << 4)  | //Days tens
+		(0x1);        //Days ones
+
+	  RTC->CR &= ~(1 << 6); //Sets to 24hr mode
+
+	  RTC->ISR &= ~(1 << 7); //Exit INIT mode
+  }
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  Message_Pointer = &Message[0];
+  Save_Pointer = &Message[0];
+  Message_Length = sizeof(Message)/sizeof(Message[0]);
+  Delay_msec = 200;
+  Animate_On = 0;
 
 
-  ADC3->CR2 |= 1;
+  //Initializes the clock
+  calendar_init_config();
 
   while (1)
   {
-	  int i,j;
-
-	  clear_display();
-
-	  Message_Pointer = &Message[0];
-	  Save_Pointer = &Message[0];
-	  Message_Length = sizeof(Message)/sizeof(Message[0]);
-	  Delay_msec = 200;
-	  Animate_On = 0;
-
-	  ADC1->SQR3 = 1; // select ADC channel 0, change to ADC channel 1 for potentiometer
-	  HAL_Delay(1);
-	  /**** TODO: START ADC1 CONVERSION ****/    // Start a conversion on ADC1 by forcing bit 30 in CR2 to 1 while keeping other bits unchanged
-	  ADC1->CR2 |= (1 << 30);
-
-	  HAL_Delay(1);
-	  if (ADC1->SR & 1<<1) // check for conversion completed
-			  {
-				/**** DISPLAY VOLTS 1'S DIGIT ON DISPLAY 7 ****/
-				analog_value = ADC1->DR;// & 0x0FF0;
-	  		  	//HAL_Delay(100);
-			  }
-
-	  digit = (7*analog_value)/4095;
-	  Seven_Segment_Digit(digit,DOT,0);
-	  HAL_Delay(100);
-
-//	  while ((GPIOC->IDR & 1 << 10))
-//	  {
-//	  for (i=0;i<16;i++)
-//	  {
-//	  GPIOD->ODR |= 1 << i;
-//	  if (i>0)GPIOD->ODR &= ~(1 << (i-1));
-//	  HAL_Delay(50);
-//	  }
-//	  for (i=15;i>=0;i--)
-//	  	  {
-//		  GPIOD->ODR |= 1 << i;
-//	  	  if (i<15)GPIOD->ODR &= ~(1 << (i+1));
-//	  	  HAL_Delay(50);
-//	  	  }
-//
-//	  }
-//	  INDEX = 0;
-//	  Music_ON = 0;
-
-
-//	  DIM_Enable = 1;
-//	  // Green
-//	  GREEN_BRT = 255;
-//	  BLUE_BRT = 0;
-//	  RED_BRT = 0;
-//	  HAL_Delay(1000);
-//
-//	  // Blue
-//	  GREEN_BRT = 0;
-//	  BLUE_BRT = 255;
-//	  RED_BRT = 0;
-//	  HAL_Delay(1000);
-//
-//	  // Red
-//	  GREEN_BRT = 0;
-//	  BLUE_BRT = 0;
-//	  RED_BRT = 255;
-//	  HAL_Delay(1000);
-//
-//	  // Magenta
-//	  GREEN_BRT = 0;
-//	  BLUE_BRT = 255;
-//	  RED_BRT = 255;
-//	  HAL_Delay(1000);
-//
-//	  // Yellow
-//	  GREEN_BRT = 255;
-//	  BLUE_BRT = 0;
-//	  RED_BRT = 255;
-//	  HAL_Delay(1000);
-//
-//	  // Cyan
-//	  GREEN_BRT = 255;
-//	  BLUE_BRT = 255;
-//	  RED_BRT = 0;
-//	  HAL_Delay(1000);
-//
-//	  // White
-//	  GREEN_BRT = 255;
-//	  BLUE_BRT = 255;
-//	  RED_BRT = 255;
-//	  HAL_Delay(1000);
-//
-//	  DIM_Enable = 0;
-
-	  //HAL_Delay(20000);  // Delay to allow song to finish
-
-
-
 
     /* USER CODE BEGIN 3 */
+	  Seven_Segment(RTC->TR);
+//	  calendar_init_config();
+//	  Seven_Segment(calendar_init_config(void));
   }
   /* USER CODE END 3 */
 }
+
+
 
 /**
   * @brief System Clock Configuration
@@ -979,8 +744,9 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 8;
@@ -1007,24 +773,11 @@ void SystemClock_Config(void)
   }
 }
 
-/**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-
-/**
-  * @brief I2S3 Initialization Function
-  * @param None
-  * @retval None
-  */
 
 
-/**
-  * @brief TIM7 Initialization Function
-  * @param None
-  * @retval None
-  */
+
+
+
 static void MX_TIM7_Init(void)
 {
 
@@ -1059,10 +812,11 @@ static void MX_TIM7_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization Function
+  * @brief USART3 Initialization Function
   * @param None
   * @retval None
   */
+
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -1153,8 +907,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
-
-
 
 /**
   * @brief  This function is executed in case of error occurrence.
