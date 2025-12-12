@@ -53,11 +53,18 @@ TIM_HandleTypeDef htim7;
 UART_HandleTypeDef huart3;
 
 //Global Variables
-char set_time_mode = 0;     // 0=run normally, 1=setting time
+char set_time = 0;		// Set Time
+char set_alarm = 0;		// Set Alarm
 char edit_field = 0;        // 0=hours, 1=minutes, 2=seconds
 int adc_value_h = 0;
 int adc_value_m = 0;
 int adc_value_s = 0;
+
+//Alarm Values
+int alarm_hour = 0;
+int alarm_min  = 0;
+int alarm_sec  = 0;
+
 
 
 
@@ -76,6 +83,7 @@ int map_adc_to_hours(int adc);
 int map_adc_to_minutes(int adc);
 int map_adc_to_seconds(int adc);
 void RTC_SetTime(int hour, int min, int sec);
+void RTC_SetAlarm(int hour, int min, int sec);
 
 
 /* USER CODE BEGIN PFP */
@@ -679,68 +687,82 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /* USER CODE BEGIN WHILE */
+
   Message_Pointer = &Message[0];
-  Save_Pointer = &Message[0];
-  Message_Length = sizeof(Message)/sizeof(Message[0]);
-  Delay_msec = 200;
-  Animate_On = 0;
+  Save_Pointer    = &Message[0];
+  Message_Length  = sizeof(Message)/sizeof(Message[0]);
+  Delay_msec      = 200;
+  Animate_On      = 0;
 
   calendar_init_config();
-  //SHORTCUT
-  // Variables (define at the top of your file or before the loop)
-  //uint8_t current_digit = 0;   // which field is being edited (0=hour,1=min,2=sec)
-  //uint8_t prev_btn10 = 0;      // assume button is not pressed initially
 
-  uint8_t current_digit = 0;   // which field is being edited (0=hour,1=min,2=sec)
-  uint8_t prev_btn0 = 1;       // assume button is not pressed initially (pull-up)
-
+  //Clock
   while (1)
   {
-      // Read PC15 as set-time switch
-      set_time_mode = (GPIOC->IDR & (1 << 15)) ? 1 : 0;
+      // ----- Read mode switches -----
+      set_time  = (GPIOC->IDR & (1 << 15)) ? 1 : 0;   // PC15
+      set_alarm = (GPIOC->IDR & (1 << 14)) ? 1 : 0;   // PC14
 
-      if (!set_time_mode)
+      // Only ONE mode at a time
+	  if (set_time)  set_alarm = 0;
+	  if (set_alarm) set_time = 0;
+
+      // ================================
+      // NORMAL MODE  → Just show RTC
+      // ================================
+      if (!set_time && !set_alarm)
       {
-          // Normal mode → display actual RTC ticking
           display_time_from_RTC();
           continue;
       }
 
-      // --- SET TIME MODE ---
+      // ================================
+      // READ POTENTIOMETERS
+      // ================================
+      uint16_t adc_value_h = Read_ADC_PA3();
+      uint16_t adc_value_m = Read_ADC_PA2();
+      uint16_t adc_value_s = Read_ADC_PA1();
 
-      // Read potentiometers
-      adc_value_h = Read_ADC_PA3();
-      adc_value_m = Read_ADC_PA2();
-      adc_value_s = Read_ADC_PA1();
+      int hour = map_adc_to_hours(adc_value_h);
+      int min  = map_adc_to_minutes(adc_value_m);
+      int sec  = map_adc_to_seconds(adc_value_s);
 
-      // --- Button logic to cycle fields ---
-//      uint8_t btn0 = (GPIOC->IDR & (1 << 0)) ? 1 : 0;  // PC0 button
-      current_digit = (current_digit + 1) % 3;   // cycle 0→1→2→0 (hour, min, sec)
+      // ================================
+      // SET TIME MODE  (PC15 = LOW)
+      // ================================
+      if (set_time)
+      {
+          RTC_SetTime(hour, min, sec);
+      }
 
-      // Read current RTC values
-      uint32_t t = RTC->TR;
-      int hour = ((t >> 20) & 0x3) * 10 + ((t >> 16) & 0xF);
-      int min  = ((t >> 12) & 0x7) * 10 + ((t >> 8) & 0xF);
-      int sec  = ((t >> 4)  & 0x7) * 10 + (t & 0xF);
+      // ================================
+      // SET ALARM MODE (PC14 = LOW)
+      // ================================
+      if(set_alarm)
+      {
+    	  while(set_alarm)
+    	  {
+    		  // Read ADC live during alarm setting
+			  uint16_t adc_value_h = Read_ADC_PA3();
+			  uint16_t adc_value_m = Read_ADC_PA2();
+			  uint16_t adc_value_s = Read_ADC_PA1();
 
-      // Update selected field using potentiometer
-      if (current_digit == 0)
-          hour = map_adc_to_hours(adc_value_h);
-      else if (current_digit == 1)
-          min = map_adc_to_minutes(adc_value_m);
-      else
-          sec = map_adc_to_seconds(adc_value_s);
+			  alarm_hour = map_adc_to_hours(adc_value_h);
+			  alarm_min  = map_adc_to_minutes(adc_value_m);
+			  alarm_sec  = map_adc_to_seconds(adc_value_s);
 
-      // Write new time to RTC
-      RTC_SetTime(hour, min, sec);
+    		  RTC_SetAlarm(alarm_hour, alarm_min, alarm_sec);
+    		  display_alarm_time();
 
-      // Display updated time
+    		  set_alarm = (GPIOC->IDR & (1 << 14)) ? 1 : 0;
+    	  }
+      }
+
+
+      // Display what is currently being modified
       display_time_from_RTC();
   }
-
-
-
-
   /* USER CODE END 3 */
 }
 
@@ -854,6 +876,28 @@ void display_time_from_RTC(void)
     Seven_Segment_Digit(0, s_o);
 }
 
+void display_alarm_time()
+{
+    uint32_t t = RTC->ALRMAR;
+
+    uint8_t h_t = (t >> 20) & 0x3;
+    uint8_t h_o = (t >> 16) & 0xF;
+    uint8_t m_t = (t >> 12) & 0x7;
+    uint8_t m_o = (t >> 8 ) & 0xF;
+    uint8_t s_t = (t >> 4 ) & 0x7;
+    uint8_t s_o =  t        & 0xF;
+
+    Seven_Segment_Digit(7, h_t);
+    Seven_Segment_Digit(6, h_o);
+    Seven_Segment_Digit(5, SPACE);
+    Seven_Segment_Digit(4, m_t);
+    Seven_Segment_Digit(3, m_o);
+    Seven_Segment_Digit(2, SPACE);
+    Seven_Segment_Digit(1, s_t);
+    Seven_Segment_Digit(0, s_o);
+}
+
+
 int Read_ADC_PA1(void)
 {
     ADC1->SQR3 = 1;         // Channel 1
@@ -925,6 +969,36 @@ void RTC_SetTime(int hour, int min, int sec)
         | (s_o);
 
     RTC->ISR &= ~(1 << 7);    // exit init mode
+}
+
+void RTC_SetAlarm(int hour, int min, int sec)
+{
+    int h_t = hour / 10;
+    int h_o = hour % 10;
+
+    int m_t = min / 10;
+    int m_o = min % 10;
+
+    int s_t = sec / 10;
+    int s_o = sec % 10;
+
+    // Disable alarm before modifying
+    RTC->CR &= ~(1 << 8);     // ALRAE = 0
+
+    // Wait until safe to write
+    while (!(RTC->ISR & (1 << 0)));  // ALRAWF
+
+    // Write ALARM A register (ALRMAR)
+    RTC->ALRMAR =
+        (h_t << 20) |
+        (h_o << 16) |
+        (m_t << 12) |
+        (m_o << 8)  |
+        (s_t << 4)  |
+        (s_o);
+
+    // Re-enable alarm A
+    RTC->CR |= (1 << 8); // ALRAE = 1
 }
 
 void Adjust_Clock_With_Potentiometer(void)
