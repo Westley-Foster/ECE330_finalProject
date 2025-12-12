@@ -696,10 +696,25 @@ int main(void)
   Animate_On      = 0;
 
   calendar_init_config();
+  int alarm_triggered = 0;
 
   //Clock
   while (1)
   {
+
+	  if (time_match_alarm() && !alarm_triggered)
+	  {
+	      alarm_triggered = 1;   // latch
+	      INDEX = 0;
+	      Music_ON = 1;
+	  }
+
+	  if (!Music_ON)
+	  {
+	      alarm_triggered = 0;
+	  }
+
+
       // ----- Read mode switches -----
       set_time  = (GPIOC->IDR & (1 << 15)) ? 1 : 0;   // PC15
       set_alarm = (GPIOC->IDR & (1 << 14)) ? 1 : 0;   // PC14
@@ -762,6 +777,24 @@ int main(void)
 
       // Display what is currently being modified
       display_time_from_RTC();
+
+      int i,j;
+
+      while ((GPIOC->IDR & 1 << 10))
+	  {
+		  for (i=0;i<16;i++)
+		  {
+			  GPIOD->ODR |= 1 << i;
+			  if (i>0)GPIOD->ODR &= ~(1 << (i-1));
+			  HAL_Delay(50);
+		  }
+		  for (i=15;i>=0;i--)
+		  {
+			  GPIOD->ODR |= 1 << i;
+			  if (i<15)GPIOD->ODR &= ~(1 << (i+1));
+			  HAL_Delay(50);
+		  }
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -982,24 +1015,46 @@ void RTC_SetAlarm(int hour, int min, int sec)
     int s_t = sec / 10;
     int s_o = sec % 10;
 
-    // Disable alarm before modifying
-    RTC->CR &= ~(1 << 8);     // ALRAE = 0
+    // Disable alarm A
+    RTC->CR &= ~(1 << 8);
+    while (!(RTC->ISR & (1 << 0))); // Wait for ALRAWF
 
-    // Wait until safe to write
-    while (!(RTC->ISR & (1 << 0)));  // ALRAWF
-
-    // Write ALARM A register (ALRMAR)
     RTC->ALRMAR =
-        (h_t << 20) |
-        (h_o << 16) |
-        (m_t << 12) |
-        (m_o << 8)  |
-        (s_t << 4)  |
-        (s_o);
+          (h_t << 20)
+        | (h_o << 16)
+        | (m_t << 12)
+        | (m_o << 8 )
+        | (s_t << 4 )
+        | (s_o);
 
     // Re-enable alarm A
-    RTC->CR |= (1 << 8); // ALRAE = 1
+    RTC->CR |= 1 << 8;
 }
+
+int time_match_alarm(void)
+{
+    uint32_t t = RTC->TR;
+    uint32_t a = RTC->ALRMAR;
+
+    int h_t = (t >> 20) & 0x3;
+    int h_o = (t >> 16) & 0xF;
+    int m_t = (t >> 12) & 0x7;
+    int m_o = (t >> 8 ) & 0xF;
+    int s_t = (t >> 4 ) & 0x7;
+    int s_o =  t        & 0xF;
+
+    int ah_t = (a >> 20) & 0x3;
+    int ah_o = (a >> 16) & 0xF;
+    int am_t = (a >> 12) & 0x7;
+    int am_o = (a >> 8 ) & 0xF;
+    int as_t = (a >> 4 ) & 0x7;
+    int as_o =  a        & 0xF;
+
+    return (h_t==ah_t && h_o==ah_o &&
+            m_t==am_t && m_o==am_o &&
+            s_t==as_t && s_o==as_o);
+}
+
 
 void Adjust_Clock_With_Potentiometer(void)
 {
