@@ -55,15 +55,27 @@ UART_HandleTypeDef huart3;
 //Global Variables
 char set_time = 0;		// Set Time
 char set_alarm = 0;		// Set Alarm
+char set_date = 0;		// Set Date
 char edit_field = 0;        // 0=hours, 1=minutes, 2=seconds
 int adc_value_h = 0;
 int adc_value_m = 0;
 int adc_value_s = 0;
 
+//Time Values
+int hour = 0;
+int min  = 0;
+int sec  = 0;
+
 //Alarm Values
 int alarm_hour = 0;
 int alarm_min  = 0;
 int alarm_sec  = 0;
+
+//Date Values
+int date_month = 0;
+int date_day = 0;
+int date_year = 0;
+
 
 
 
@@ -75,6 +87,7 @@ static void MX_TIM7_Init(void);
 
 //Custom Functions
 void display_time_from_RTC(void);
+void display_alarm_time();
 void calendar_init_config(void);
 int Read_ADC_PA1(void);
 int Read_ADC_PA2(void);
@@ -84,6 +97,11 @@ int map_adc_to_minutes(int adc);
 int map_adc_to_seconds(int adc);
 void RTC_SetTime(int hour, int min, int sec);
 void RTC_SetAlarm(int hour, int min, int sec);
+void RTC_SetDate(int month, int day, int year);
+void display_alarm_string(void);
+void display_time_string(void);
+void display_date_string(void);
+
 
 
 /* USER CODE BEGIN PFP */
@@ -702,67 +720,97 @@ int main(void)
   while (1)
   {
 
+	  //Check If Alarm Matches & Alarm Hasnt Been Triggered (Stops Infinite Music)
 	  if (time_match_alarm() && !alarm_triggered)
 	  {
-	      alarm_triggered = 1;   // latch
+	      alarm_triggered = 1;
 	      INDEX = 0;
 	      Music_ON = 1;
 	  }
 
+	  //Reset Alarm Trigger For Next Use
 	  if (!Music_ON)
 	  {
 	      alarm_triggered = 0;
 	  }
 
 
-      // ----- Read mode switches -----
-      set_time  = (GPIOC->IDR & (1 << 15)) ? 1 : 0;   // PC15
-      set_alarm = (GPIOC->IDR & (1 << 14)) ? 1 : 0;   // PC14
+      // Set Modes Based Off Of Active Switch
+      set_time  = (GPIOC->IDR & (1 << 15)) ? 1 : 0;   // SW15
+      set_alarm = (GPIOC->IDR & (1 << 14)) ? 1 : 0;   // SW14
+      set_date = (GPIOC->IDR & (1 << 13)) ? 1 : 0;   // SW13
 
-      // Only ONE mode at a time
-	  if (set_time)  set_alarm = 0;
-	  if (set_alarm) set_time = 0;
 
-      // ================================
-      // NORMAL MODE  → Just show RTC
-      // ================================
-      if (!set_time && !set_alarm)
+      //Ensure Only One Switch Is Active At Once
+      if (set_time) {
+          set_alarm = 0;
+          set_date  = 0;
+      }
+      else if (set_alarm) {
+          set_time = 0;
+          set_date = 0;
+      }
+      else if (set_date) {
+          set_time  = 0;
+          set_alarm = 0;
+      }
+
+
+      //Default: Show Time
+      if (!set_time && !set_alarm && !set_date)
       {
           display_time_from_RTC();
           continue;
       }
 
-      // ================================
-      // READ POTENTIOMETERS
-      // ================================
-      uint16_t adc_value_h = Read_ADC_PA3();
-      uint16_t adc_value_m = Read_ADC_PA2();
-      uint16_t adc_value_s = Read_ADC_PA1();
+      //Get Input From Potentiometers
+//      uint16_t adc_value_h = Read_ADC_PA3();	//Hours -> PA3
+//      uint16_t adc_value_m = Read_ADC_PA2();	//Minutes -> PA2
+//      uint16_t adc_value_s = Read_ADC_PA1();	//Seconds -> PA1
+//
+//      //Format Potentiometer Input Into Valid Times
+//      int hour = map_adc_to_hours(adc_value_h);
+//      int min  = map_adc_to_minutes(adc_value_m);
+//      int sec  = map_adc_to_seconds(adc_value_s);
 
-      int hour = map_adc_to_hours(adc_value_h);
-      int min  = map_adc_to_minutes(adc_value_m);
-      int sec  = map_adc_to_seconds(adc_value_s);
-
-      // ================================
-      // SET TIME MODE  (PC15 = LOW)
-      // ================================
+      //Set Time
       if (set_time)
       {
-          RTC_SetTime(hour, min, sec);
-      }
-
-      // ================================
-      // SET ALARM MODE (PC14 = LOW)
-      // ================================
-      if(set_alarm)
-      {
-    	  while(set_alarm)
-    	  {
-    		  // Read ADC live during alarm setting
+    	  display_time_string();
+		  HAL_Delay(500);
+          //RTC_SetTime(hour, min, sec);
+		  while(set_time)
+		  {
+			  //Get Input From Potentiometers
 			  uint16_t adc_value_h = Read_ADC_PA3();
 			  uint16_t adc_value_m = Read_ADC_PA2();
 			  uint16_t adc_value_s = Read_ADC_PA1();
 
+			  //Format Potentiometer Input Into Valid Times
+			  hour = map_adc_to_hours(adc_value_h);
+			  min  = map_adc_to_minutes(adc_value_m);
+			  sec  = map_adc_to_seconds(adc_value_s);
+
+			  RTC_SetTime(hour, min, sec);
+		      display_time_from_RTC();
+
+			  set_time = (GPIOC->IDR & (1 << 15)) ? 1 : 0;
+		  }
+      }
+
+      //Set Alarm
+      if(set_alarm)
+      {
+    	  display_alarm_string();
+    	  HAL_Delay(500);
+    	  while(set_alarm)
+    	  {
+    		  //Get Input From Potentiometers
+			  uint16_t adc_value_h = Read_ADC_PA3();
+			  uint16_t adc_value_m = Read_ADC_PA2();
+			  uint16_t adc_value_s = Read_ADC_PA1();
+
+		      //Format Potentiometer Input Into Valid Times
 			  alarm_hour = map_adc_to_hours(adc_value_h);
 			  alarm_min  = map_adc_to_minutes(adc_value_m);
 			  alarm_sec  = map_adc_to_seconds(adc_value_s);
@@ -774,6 +822,28 @@ int main(void)
     	  }
       }
 
+	if(set_date)
+	{
+		display_date_string();
+		HAL_Delay(500);
+
+		while(set_date)
+		{
+		    uint16_t adc_month = Read_ADC_PA3();
+		    uint16_t adc_day   = Read_ADC_PA2();
+		    uint16_t adc_year  = Read_ADC_PA1();
+
+		    date_month = map_adc_to_month(adc_month);
+		    date_day   = map_adc_to_day(adc_day);
+		    date_year  = map_adc_to_year(adc_year);
+
+		    RTC_SetDate(date_year, date_month, date_day);
+		    display_date_time();
+
+		    set_date = (GPIOC->IDR & (1 << 13)) ? 1 : 0;
+		}
+
+	}
 
       // Display what is currently being modified
       display_time_from_RTC();
@@ -930,6 +1000,98 @@ void display_alarm_time()
     Seven_Segment_Digit(0, s_o);
 }
 
+void display_date_time(void)
+{
+    uint32_t d = RTC->DR;
+
+    // Decode BCD from RTC->DR
+    uint8_t y_t = (d >> 20) & 0xF;   // Year tens
+    uint8_t y_o = (d >> 16) & 0xF;   // Year ones
+    uint8_t m_t = (d >> 12) & 0x1;   // Month tens (0-1)
+    uint8_t m_o = (d >> 8 ) & 0xF;   // Month ones
+    uint8_t d_t = (d >> 4 ) & 0x3;   // Day tens (0-3)
+    uint8_t d_o =  d        & 0xF;   // Day ones
+
+    // Display order: Month-Day-Year
+    Seven_Segment_Digit(7, m_t);  // Month tens
+    Seven_Segment_Digit(6, m_o);  // Month ones
+
+    Seven_Segment_Digit(5, SPACE);
+
+    Seven_Segment_Digit(4, d_t);  // Day tens
+    Seven_Segment_Digit(3, d_o);  // Day ones
+
+    Seven_Segment_Digit(2, SPACE);
+
+    Seven_Segment_Digit(1, y_t);  // Year tens
+    Seven_Segment_Digit(0, y_o);  // Year ones
+}
+
+
+
+void display_alarm_string(void)
+{
+	Seven_Segment_Digit(7, CHAR_S);
+    Seven_Segment_Digit(6, CHAR_E);
+    Seven_Segment_Digit(5, CHAR_T);
+    Seven_Segment_Digit(4, SPACE);
+    Seven_Segment_Digit(3, CHAR_A);
+    Seven_Segment_Digit(2, CHAR_L);
+    Seven_Segment_Digit(1, CHAR_R);
+    Seven_Segment_Digit(0, CHAR_M);
+}
+
+void display_time_string(void)
+{
+	Seven_Segment_Digit(7, CHAR_S);
+    Seven_Segment_Digit(6, CHAR_E);
+    Seven_Segment_Digit(5, CHAR_T);
+    Seven_Segment_Digit(4, SPACE);
+    Seven_Segment_Digit(3, CHAR_T);
+    Seven_Segment_Digit(2, CHAR_I);
+    Seven_Segment_Digit(1, CHAR_M);
+    Seven_Segment_Digit(0, CHAR_E);
+}
+
+void display_date_string(void)
+{
+	Seven_Segment_Digit(7, CHAR_S);
+    Seven_Segment_Digit(6, CHAR_E);
+    Seven_Segment_Digit(5, CHAR_T);
+    Seven_Segment_Digit(4, SPACE);
+    Seven_Segment_Digit(3, CHAR_D);
+    Seven_Segment_Digit(2, CHAR_A);
+    Seven_Segment_Digit(1, CHAR_T);
+    Seven_Segment_Digit(0, CHAR_E);
+}
+
+void display_date_from_RTC(void)
+{
+    uint32_t d = RTC->DR;
+
+    uint8_t y_t = (d >> 20) & 0xF;     // year tens
+    uint8_t y_o = (d >> 16) & 0xF;     // year ones
+    uint8_t m_t = (d >> 12) & 0x1;     // month tens
+    uint8_t m_o = (d >> 8 ) & 0xF;     // month ones
+    uint8_t d_t = (d >> 4 ) & 0x3;     // day tens
+    uint8_t d_o =  d        & 0xF;     // day ones
+
+    // DISPLAY on 7-segment
+    Seven_Segment_Digit(7, y_t);
+    Seven_Segment_Digit(6, y_o);
+
+    Seven_Segment_Digit(5, SPACE);
+
+    Seven_Segment_Digit(4, m_t);
+    Seven_Segment_Digit(3, m_o);
+
+    Seven_Segment_Digit(2, SPACE);
+
+    Seven_Segment_Digit(1, d_t);
+    Seven_Segment_Digit(0, d_o);
+}
+
+
 
 int Read_ADC_PA1(void)
 {
@@ -961,7 +1123,7 @@ int Read_ADC_PA3(void)
     return ADC1->DR;
 }
 
-
+//Time Mapping
 int map_adc_to_hours(int adc)
 {
 	return (adc * 23 + 2047) / 4095;     // 0–23
@@ -976,6 +1138,23 @@ int map_adc_to_seconds(int adc)
 {
     return (adc * 59 + 2047) / 4095;     // 0–59
 }
+
+//Date Mapping
+int map_adc_to_month(int adc)
+{
+    return (adc * 12) / 4095;   // 1–12
+}
+
+int map_adc_to_day(int adc)
+{
+    return (adc * 31) / 4095;   // 1–31
+}
+
+int map_adc_to_year(int adc)
+{
+    return (adc * 99) / 4095;       // 0–99 (last 2 digits)
+}
+
 
 void RTC_SetTime(int hour, int min, int sec)
 {
@@ -1030,6 +1209,31 @@ void RTC_SetAlarm(int hour, int min, int sec)
     // Re-enable alarm A
     RTC->CR |= 1 << 8;
 }
+
+void RTC_SetDate(int year, int month, int day)
+{
+    int y_t = year / 10;
+    int y_o = year % 10;
+    int m_t = month / 10;
+    int m_o = month % 10;
+    int d_t = day / 10;
+    int d_o = day % 10;
+
+    RTC->ISR |= (1 << 7);                      // Enter init mode
+    while (!(RTC->ISR & (1 << 6)));
+
+    RTC->DR =
+          (y_t << 20)
+        | (y_o << 16)
+        | (m_t << 12)
+        | (m_o << 8 )
+        | (d_t << 4 )
+        | (d_o);
+
+    RTC->ISR &= ~(1 << 7);                    // Exit init mode
+}
+
+
 
 int time_match_alarm(void)
 {
