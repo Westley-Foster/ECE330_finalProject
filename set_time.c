@@ -76,6 +76,19 @@ int date_month = 0;
 int date_day = 0;
 int date_year = 0;
 
+//Day Value
+int set_day = 0;
+int day_week = 0;
+
+typedef enum {
+    MONDAY = 0,
+    TUESDAY,
+    WEDNESDAY,
+    THURSDAY,
+    FRIDAY,
+    SATURDAY,
+    SUNDAY
+} Weekday;
 
 
 
@@ -95,12 +108,15 @@ int Read_ADC_PA3(void);
 int map_adc_to_hours(int adc);
 int map_adc_to_minutes(int adc);
 int map_adc_to_seconds(int adc);
+int map_adc_to_week(int adc);
 void RTC_SetTime(int hour, int min, int sec);
 void RTC_SetAlarm(int hour, int min, int sec);
 void RTC_SetDate(int month, int day, int year);
 void display_alarm_string(void);
 void display_time_string(void);
 void display_date_string(void);
+void display_day_string(void);
+void display_weekday(Weekday day);
 
 
 
@@ -739,39 +755,46 @@ int main(void)
       set_time  = (GPIOC->IDR & (1 << 15)) ? 1 : 0;   // SW15
       set_alarm = (GPIOC->IDR & (1 << 14)) ? 1 : 0;   // SW14
       set_date = (GPIOC->IDR & (1 << 13)) ? 1 : 0;   // SW13
+      set_day = (GPIOC->IDR & (1 << 12)) ? 1 : 0;	// SW12
 
 
       //Ensure Only One Switch Is Active At Once
       if (set_time) {
           set_alarm = 0;
           set_date  = 0;
+          set_day = 0;
       }
       else if (set_alarm) {
           set_time = 0;
           set_date = 0;
+          set_day = 0;
       }
       else if (set_date) {
           set_time  = 0;
           set_alarm = 0;
+          set_day = 0;
+      }
+      else if (set_day) {
+    	  set_time = 0;
+    	  set_alarm = 0;
+    	  set_date  = 0;
       }
 
 
+      //TODO: WORK ON CYCLING
       //Default: Show Time
-      if (!set_time && !set_alarm && !set_date)
+      if (!set_time && !set_alarm && !set_date && !set_day)
       {
           display_time_from_RTC();
+//          HAL_Delay(3000);
+//		  display_alarm_time();
+//          HAL_Delay(3000);
+//		  display_date_time();
+//          HAL_Delay(3000);
+//		  display_weekday(day_week);
+//          HAL_Delay(3000);
           continue;
       }
-
-      //Get Input From Potentiometers
-//      uint16_t adc_value_h = Read_ADC_PA3();	//Hours -> PA3
-//      uint16_t adc_value_m = Read_ADC_PA2();	//Minutes -> PA2
-//      uint16_t adc_value_s = Read_ADC_PA1();	//Seconds -> PA1
-//
-//      //Format Potentiometer Input Into Valid Times
-//      int hour = map_adc_to_hours(adc_value_h);
-//      int min  = map_adc_to_minutes(adc_value_m);
-//      int sec  = map_adc_to_seconds(adc_value_s);
 
       //Set Time
       if (set_time)
@@ -844,6 +867,23 @@ int main(void)
 		}
 
 	}
+
+	if(set_day)
+	{
+	    display_day_string();   // shows "SET DAY" on display
+	    HAL_Delay(500);
+
+	    while(set_day)
+	    {
+	        uint16_t adc_value = Read_ADC_PA1();
+	        day_week = map_adc_to_week(adc_value);
+
+	        display_weekday(day_week);
+
+	        set_day = (GPIOC->IDR & (1 << 12)) ? 1 : 0;
+	    }
+	}
+
 
       // Display what is currently being modified
       display_time_from_RTC();
@@ -1027,6 +1067,82 @@ void display_date_time(void)
     Seven_Segment_Digit(0, y_o);  // Year ones
 }
 
+void display_weekday(Weekday day)
+{
+    switch(day)
+    {
+        case MONDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_M);
+			Seven_Segment_Digit(5, CHAR_O);
+			Seven_Segment_Digit(4, CHAR_N);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+        case TUESDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_T);
+			Seven_Segment_Digit(5, CHAR_U);
+			Seven_Segment_Digit(4, CHAR_E);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+        case WEDNESDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_W);
+			Seven_Segment_Digit(5, CHAR_E);
+			Seven_Segment_Digit(4, CHAR_N);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+        case THURSDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_T);
+			Seven_Segment_Digit(5, CHAR_H);
+			Seven_Segment_Digit(4, CHAR_U);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+        case FRIDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_F);
+			Seven_Segment_Digit(5, CHAR_R);
+			Seven_Segment_Digit(4, CHAR_I);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+        case SATURDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_S);
+			Seven_Segment_Digit(5, CHAR_A);
+			Seven_Segment_Digit(4, CHAR_T);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+        case SUNDAY:
+        	Seven_Segment_Digit(7, SPACE);
+			Seven_Segment_Digit(6, CHAR_S);
+			Seven_Segment_Digit(5, CHAR_U);
+			Seven_Segment_Digit(4, CHAR_N);
+			Seven_Segment_Digit(3, CHAR_D);
+			Seven_Segment_Digit(2, CHAR_A);
+			Seven_Segment_Digit(1, CHAR_Y);
+			Seven_Segment_Digit(0, SPACE);
+			break;
+    }
+}
 
 
 void display_alarm_string(void)
@@ -1064,6 +1180,19 @@ void display_date_string(void)
     Seven_Segment_Digit(1, CHAR_T);
     Seven_Segment_Digit(0, CHAR_E);
 }
+
+void display_day_string(void)
+{
+    Seven_Segment_Digit(7, CHAR_S);
+    Seven_Segment_Digit(6, CHAR_E);
+    Seven_Segment_Digit(5, CHAR_T);
+    Seven_Segment_Digit(4, SPACE);
+    Seven_Segment_Digit(3, CHAR_D);
+    Seven_Segment_Digit(2, CHAR_A);
+    Seven_Segment_Digit(1, CHAR_Y);
+    Seven_Segment_Digit(0, SPACE);
+}
+
 
 void display_date_from_RTC(void)
 {
@@ -1142,17 +1271,25 @@ int map_adc_to_seconds(int adc)
 //Date Mapping
 int map_adc_to_month(int adc)
 {
-    return (adc * 12) / 4095;   // 1–12
+    return 1 + (adc * 12) / 4095;   // 1–12
 }
 
 int map_adc_to_day(int adc)
 {
-    return (adc * 31) / 4095;   // 1–31
+    return 1 + (adc * 31) / 4095;   // 1–31
 }
 
 int map_adc_to_year(int adc)
 {
     return (adc * 99) / 4095;       // 0–99 (last 2 digits)
+}
+
+//Week Day Mapping
+int map_adc_to_week(int adc)
+{
+    int day = (adc * 7) / 4095;
+    if(day > 6) day = 6;
+    return (Weekday)day;
 }
 
 
